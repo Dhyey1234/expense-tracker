@@ -1,11 +1,10 @@
 import axios from "axios";
-
-
 export const authApi = axios.create({
-    baseURL:"http://localhost/api/auth"
+    baseURL:"/api/auth"
 });
-
-
 export const expenseApi = axios.create({
-    baseURL:"http://localhost/api/expenses"
+    baseURL:"/api/expenses"
+});
+export const reportApi = axios.create({
+    baseURL:"/api/reports"
 });
