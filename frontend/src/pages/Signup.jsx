@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../api/axios";
+import { authApi } from "../api/axios";
 
 function Signup() {
   const navigate = useNavigate();
@@ -14,7 +14,7 @@ function Signup() {
     e.preventDefault();
 
     try {
-      const response = await api.post("/signup", {
+      const response = await authApi.post("/signup", {
         email,
         password,
       });
