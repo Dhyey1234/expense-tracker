@@ -18,19 +18,8 @@ services:
 
     volumes:
       - postgres-data:/var/lib/postgresql/data
-  nginx:
 
-    image: nginx:latest
 
-    ports:
-      - "80:80"
-
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-
-    depends_on:
-      - auth-service
-      - expense-service
   auth-service:
     build: ./auth-service
 
@@ -45,6 +34,8 @@ services:
     depends_on:
       - db
 
+
+
   expense-service:
     build: ./expense-service
 
@@ -58,6 +49,46 @@ services:
 
     depends_on:
       - db
+
+
+
+  report-service:
+    build: ./report-service
+
+    container_name: report-service
+
+    env_file:
+      - ./report-service/.env
+
+    environment:
+      PORT: 3003
+      EXPENSE_SERVICE: http://expense-service:3002
+
+    ports:
+      - "3003:3003"
+
+    depends_on:
+      - expense-service
+
+
+
+  nginx:
+    image: nginx:latest
+
+    container_name: nginx-gateway
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+
+    depends_on:
+      - auth-service
+      - expense-service
+      - report-service
+
+
 
 volumes:
   postgres-data:
