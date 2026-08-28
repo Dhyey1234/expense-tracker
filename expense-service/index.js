@@ -1,15 +1,18 @@
 const express = require("express");
 const { Pool } = require("pg");
-const authenticate = require("./middleware/auth");
 const cors = require("cors");
 require("dotenv").config();
+
+const authenticate = require("./middleware/auth");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Database connection
+// ===============================
+// DATABASE
+// ===============================
 
 const pool = new Pool({
   host: process.env.DB_HOST || "db",
@@ -19,20 +22,20 @@ const pool = new Pool({
   database: process.env.DB_NAME || "expense_tracker",
 });
 
-// Check database connection
+// Database error handling
 
 pool.on("error", (error) => {
   console.error("Unexpected PostgreSQL error:", error);
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
-
-// Create expenses table
+// ===============================
+// CREATE DATABASE TABLE
+// ===============================
 
 async function initDB() {
   await pool.query(`
 
-        CREATE TABLE IF NOT EXISTS expenses(
+        CREATE TABLE IF NOT EXISTS expenses (
 
             id SERIAL PRIMARY KEY,
 
@@ -55,41 +58,9 @@ async function initDB() {
   console.log("Expenses table ready");
 }
 
-// JWT Authentication Middleware
-
-function authenticate(req, res, next) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({
-      error: "Authorization token required",
-    });
-  }
-
-  const parts = authHeader.split(" ");
-
-  if (parts.length !== 2 || parts[0] !== "Bearer") {
-    return res.status(401).json({
-      error: "Invalid authorization format",
-    });
-  }
-
-  const token = parts[1];
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    req.user = decoded;
-
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      error: "Invalid or expired token",
-    });
-  }
-}
-
-// Health Check
+// ===============================
+// HEALTH CHECK
+// ===============================
 
 app.get("/", (req, res) => {
   res.json({
@@ -99,7 +70,9 @@ app.get("/", (req, res) => {
   });
 });
 
+// ===============================
 // CREATE EXPENSE
+// ===============================
 
 app.post("/expenses", authenticate, async (req, res) => {
   try {
@@ -114,15 +87,14 @@ app.post("/expenses", authenticate, async (req, res) => {
     const result = await pool.query(
       `
 
-INSERT INTO expenses
+                INSERT INTO expenses
+                (user_id, title, amount, category)
 
-(user_id,title,amount,category)
+                VALUES ($1, $2, $3, $4)
 
-VALUES($1,$2,$3,$4)
+                RETURNING *
 
-RETURNING *
-
-`,
+                `,
 
       [req.user.id, title, amount, category || null],
     );
@@ -136,127 +108,25 @@ RETURNING *
     });
   }
 });
-// UPDATE EXPENSE
 
-app.put(
-    "/expenses/:id",
-    authenticate,
-    async (req, res) => {
-
-        try {
-
-            const { id } = req.params;
-            const { title, amount, category } = req.body;
-
-            if (!title || !amount) {
-                return res.status(400).json({
-                    error: "Title and amount are required"
-                });
-            }
-
-            const result = await pool.query(
-                `
-                UPDATE expenses
-                SET
-                    title = $1,
-                    amount = $2,
-                    category = $3
-                WHERE id = $4
-                AND user_id = $5
-                RETURNING *
-                `,
-                [
-                    title,
-                    amount,
-                    category || null,
-                    id,
-                    req.user.id
-                ]
-            );
-
-            if (result.rows.length === 0) {
-                return res.status(404).json({
-                    error: "Expense not found"
-                });
-            }
-
-            res.json(result.rows[0]);
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error: "Server error"
-            });
-
-        }
-
-    }
-);
-// DELETE EXPENSE
-
-app.delete(
-    "/expenses/:id",
-    authenticate,
-    async (req, res) => {
-
-        try {
-
-            const { id } = req.params;
-
-            const result = await pool.query(
-                `
-                DELETE FROM expenses
-                WHERE id = $1
-                AND user_id = $2
-                RETURNING *
-                `,
-                [
-                    id,
-                    req.user.id
-                ]
-            );
-
-            if (result.rows.length === 0) {
-                return res.status(404).json({
-                    error: "Expense not found"
-                });
-            }
-
-            res.json({
-                message: "Expense deleted successfully",
-                expense: result.rows[0]
-            });
-
-        } catch (error) {
-
-            console.error(error);
-
-            res.status(500).json({
-                error: "Server error"
-            });
-
-        }
-
-    }
-);
-// GET USER EXPENSES
+// ===============================
+// GET EXPENSES
+// ===============================
 
 app.get("/expenses", authenticate, async (req, res) => {
   try {
     const result = await pool.query(
       `
 
-SELECT *
+                SELECT *
 
-FROM expenses
+                FROM expenses
 
-WHERE user_id=$1
+                WHERE user_id = $1
 
-ORDER BY created_at DESC
+                ORDER BY created_at DESC
 
-`,
+                `,
 
       [req.user.id],
     );
@@ -270,6 +140,105 @@ ORDER BY created_at DESC
     });
   }
 });
+
+// ===============================
+// UPDATE EXPENSE
+// ===============================
+
+app.put("/expenses/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { title, amount, category } = req.body;
+
+    if (!title || !amount) {
+      return res.status(400).json({
+        error: "Title and amount are required",
+      });
+    }
+
+    const result = await pool.query(
+      `
+
+                UPDATE expenses
+
+                SET
+                    title = $1,
+                    amount = $2,
+                    category = $3
+
+                WHERE id = $4
+                AND user_id = $5
+
+                RETURNING *
+
+                `,
+
+      [title, amount, category || null, id, req.user.id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Expense not found",
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Server error",
+    });
+  }
+});
+
+// ===============================
+// DELETE EXPENSE
+// ===============================
+
+app.delete("/expenses/:id", authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `
+
+                DELETE FROM expenses
+
+                WHERE id = $1
+                AND user_id = $2
+
+                RETURNING *
+
+                `,
+
+      [id, req.user.id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Expense not found",
+      });
+    }
+
+    res.json({
+      message: "Expense deleted successfully",
+
+      expense: result.rows[0],
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Server error",
+    });
+  }
+});
+
+// ===============================
+// START SERVER
+// ===============================
 
 const PORT = process.env.PORT || 3002;
 
